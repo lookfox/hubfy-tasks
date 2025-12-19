@@ -1,6 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { setToken } from "@/lib/auth-client";
+
 
 type LoginForm = {
   email: string;
@@ -10,14 +13,17 @@ type LoginForm = {
 function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
-
 export default function LoginPage() {
+  const router = useRouter();
+
   const [form, setForm] = useState<LoginForm>({ email: "", password: "" });
   const [touched, setTouched] = useState<Record<keyof LoginForm, boolean>>({
     email: false,
     password: false,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
+
 
   const errors = useMemo(() => {
     const next: Partial<Record<keyof LoginForm, string>> = {};
@@ -34,22 +40,42 @@ export default function LoginPage() {
 
   const canSubmit = Object.keys(errors).length === 0 && !isSubmitting;
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+ async function handleSubmit(e: React.FormEvent) {
+  e.preventDefault();
 
-    // marca tudo como "tocado" para mostrar erros se houver
-    setTouched({ email: true, password: true });
+  setTouched({ email: true, password: true });
+  setServerError(null);
 
-    if (!canSubmit) return;
+  if (!canSubmit) return;
 
-    setIsSubmitting(true);
+  setIsSubmitting(true);
 
-    // Amanhã: aqui entra o fetch POST /api/auth/login
-    await new Promise((r) => setTimeout(r, 600));
+  try {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: form.email.trim(),
+        password: form.password,
+      }),
+    });
 
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      setServerError(data?.error || "Falha ao entrar. Verifique seus dados.");
+      return;
+    }
+
+    setToken(data.token);
+    router.push("/dashboard");
+  } catch {
+    setServerError("Erro de rede. Tente novamente.");
+  } finally {
     setIsSubmitting(false);
-    alert("UI OK. Amanhã vamos integrar na API.");
   }
+}
+
 
   return (
     <main className="min-h-screen flex items-center justify-center p-4">
@@ -62,6 +88,12 @@ export default function LoginPage() {
         </header>
 
         <form className="space-y-4" onSubmit={handleSubmit}>
+          {serverError ? (
+  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+    {serverError}
+  </div>
+) : null}
+
           <div>
             <label className="block text-sm font-medium" htmlFor="email">
               Email
